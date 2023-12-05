@@ -6,8 +6,24 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <unistd.h>
+#include <pthread.h>
 
 #define MAX_MESSAGE 200
+
+int client_socket;
+
+// Function to receive and display messages from the server
+void* receive_messages(void* arg) {
+    char message[MAX_MESSAGE];
+    int read_size;
+
+    while ((read_size = recv(client_socket, message, sizeof(message), 0)) > 0) {
+        message[read_size] = '\0'; // Null-terminate the received message
+        printf("Server: %s\n", message);
+    }
+
+    return NULL;
+}
 
 int main(int argc, char* argv[]) {
     if (argc != 3) {
@@ -15,8 +31,8 @@ int main(int argc, char* argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    int client_socket;
     struct sockaddr_in server_addr;
+    pthread_t receive_thread;
 
     // Create socket
     client_socket = socket(AF_INET, SOCK_STREAM, 0);
@@ -39,6 +55,13 @@ int main(int argc, char* argv[]) {
 
     printf("Connected to server %s:%s\n", argv[1], argv[2]);
 
+    // Create a thread to receive and display messages from the server
+    if (pthread_create(&receive_thread, NULL, receive_messages, NULL) != 0) {
+        perror("Error creating receive thread");
+        close(client_socket);
+        exit(EXIT_FAILURE);
+    }
+
     char message[MAX_MESSAGE];
 
     // Accept user input and send messages to the server
@@ -54,14 +77,13 @@ int main(int argc, char* argv[]) {
         if (strcmp(message, "quit") == 0) {
             break;
         }
-
-        // Receive and display messages from the server
-        recv(client_socket, message, sizeof(message), 0);
-        printf("Server: %s\n", message);
     }
 
     // Close the connection
     close(client_socket);
+
+    // Wait for the receive thread to finish
+    pthread_join(receive_thread, NULL);
 
     return 0;
 }
