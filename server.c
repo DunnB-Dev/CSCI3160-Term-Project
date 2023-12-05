@@ -1,6 +1,6 @@
 //
 // Date: 12/02/2023
-// Authors: Brycen Dunn, Dustin Swayze, Darris Reece
+// Authors: Brycen Dunn
 // Purpose: Handle server logic for IRC-like Application
 //
 
@@ -25,11 +25,16 @@
 // user ID, and name. Name length is defined here.
 //
 typedef struct {
+
     struct sockaddr_in address;
     int socket_fd;
     int user_id;
     char name[MAX_NAME_LENGTH];
+
 } client_t;
+
+FILE *file = fopen(CHAT_FILE, "chat_log.txt");
+fclose(file);
 
 client_t *clients[MAX_CLIENTS]; // MAX_CLIENT pointers
 pthread_mutex_t clients_mutex = PTHREAD_MUTEX_INITIALIZER; // initialize mutual exclusion lock
@@ -41,14 +46,18 @@ int user_id = 0; // initialize user_id to 0
 // calling thread will be blocked.
 //
 void lock_clients() {
+
     pthread_mutex_lock(&clients_mutex);
+
 }
 
 //
 // unlock_clients function attempts to unlock the mutex.
 //
 void unlock_clients() {
+
     pthread_mutex_unlock(&clients_mutex);
+
 }
 
 //
@@ -57,27 +66,66 @@ void unlock_clients() {
 // exceed MAX_CLIENTS.
 //
 void add_client(client_t *client) {
+
     lock_clients();
+
     for(int i = 0; i < MAX_CLIENTS; i++) {
+
         if(!clients[i]) {
             clients[i] = client;
             break;
         }
+
     }
+
     unlock_clients();
+
 }
 
 //
 // remove_client function take the user ID as a function and frees the client upon disconnect.
 //
 void remove_client(int uid) {
+
     lock_clients();
+
     for(int i = 0; i < MAX_CLIENTS; i++) {
+
         if(clients[i] && clients[i]->user_id == uid) {
+
             free(clients[i]);
             clients[i] = NULL;
             break;
+
         }
+
     }
+
     unlock_clients();
+
+}
+
+//
+// send_message function takes the message and user ID as parameters and sends the message to clients.
+// gets current time and formats it into a timestamp. opens chat log file in append mode.
+//
+void send_message(char *msg, int uid) {
+
+    lock_clients();
+    char buf[MAX_MESSAGE];
+    time_t now = time(NULL);
+
+    for (int i = 0; i < MAX_CLIENTS; i++) {
+
+        if (clients[i] && clients[i]->user_id != uid) {
+
+            snprintf(buf, sizeof(buf), "%s - %s\n", clients[uid]->name, msg);
+            send(clients[i]->socket_fd, buf, strlen(buf), 0);
+
+        }
+
+    }
+
+    unlock_clients();
+
 }
