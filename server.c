@@ -3,103 +3,99 @@
 // Authors: Brycen Dunn
 // Purpose: Handle server logic for IRC-like Application
 //
-
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
+#include <errno.h>
+#include <netdb.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
-#include <errno.h>
 #include <string.h>
-#include <pthread.h>
+#include <sys/socket.h>
 #include <sys/types.h>
+#include <unistd.h>
 
-#define MAX_CLIENTS 5
-#define MAX_MESSAGE 200
-#define MAX_NAME_LENGTH 10
+#define BUF_SIZE 500
 
-static int client_count = 0; // Number of clients connected
-static int user_id = 5; 
+int main(int argc, char *argv[]) {
+	int						 reuse_port = 1;
+	int						 connection;
+	int                      sfd, s;
+	char                     buf[BUF_SIZE];
+	char					 portnum[6];
+	ssize_t                  nread;
+	socklen_t                peer_addrlen;
+	struct addrinfo          hints;
+	struct addrinfo          *result, *rp;
+	struct sockaddr_storage  peer_addr;
 
-// Client struct to hold client information and link to next client
-struct client_struct{
+	if (argc > 1) {
+		strncpy(portnum, argv[1], 5);
+		portnum[5] = '\0';
+	} else {
+		strcpy(portnum, "8888");
+	}
 
-    struct sockaddr_in address;
-    int socket_file_descriptor; // File descriptor for client socket
-    int user_id;
-    char name[MAX_NAME_LENGTH];
-    struct client_struct *next; // Pointer to next client
+	memset(&hints, 0, sizeof(hints));
+	hints.ai_family = AF_UNSPEC;    /* Allow IPv4 or IPv6 */
+	hints.ai_socktype = SOCK_STREAM;/* TCP protocol socket */
+	hints.ai_flags = AI_PASSIVE;    /* For wildcard IP address */
+	hints.ai_protocol = IPPROTO_TCP;/* TCP */
+	hints.ai_canonname = NULL;
+	hints.ai_addr = NULL;
+	hints.ai_next = NULL;
 
-};
+	s = getaddrinfo(NULL, portnum, &hints, &result);
+	if (s != 0) {
+		fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(s));
+		exit(EXIT_FAILURE);
+	}
 
-// Initialize mutex lock and client list
-pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;  // Initialize mutex lock
-struct client_struct *clients = NULL; // Initialize client list
+	/* getaddrinfo() returns a list of address structures.
+		 Try each address until we successfully bind(2).
+		 If socket(2) (or bind(2)) fails, we (close the socket
+		 and) try the next address. */
 
-// Function to add client to client list and lock mutex 
-void enqueue_client(struct client_struct *client){
+	for (rp = result; rp != NULL; rp = rp->ai_next) {
+		sfd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+		if (sfd == -1) { continue; }
+		
+		/* Allow reuse of the port--spread the accept load out across multiple threads */
+		if (s = setsockopt(sfd, SOL_SOCKET, SO_REUSEPORT, &reuse_port, sizeof(reuse_port)) < 0) {
+			fprintf(stderr, "Error on setsockopt: %s\n", strerror(errno));
+			continue;
+		}
 
-    pthread_mutex_lock(&lock); 
-    client->next = clients; // Set next client to current client
-    clients = client; // Set current client to head of list
-    pthread_mutex_unlock(&lock);
+		if (bind(sfd, rp->ai_addr, rp->ai_addrlen) == 0) { break; } /* Success */
 
-}
+		close(sfd);
+	}
 
-// Function to remove client from client list and unlock mutex
-void dequeue_client(int user_id){
+	freeaddrinfo(result);           /* No longer needed */
 
-    pthread_mutex_lock(&lock);
-    struct client_struct *client = clients; // Set client to head of list
-    struct client_struct *prev = NULL; // Set previous client to NULL
+	if (rp == NULL) {               /* No address succeeded */
+		fprintf(stderr, "Could not bind\n");
+		exit(EXIT_FAILURE);
+	}
 
-    while (client) { // Loop through client list
+	/* Listen to the gorram socket */
+	if (listen(sfd, 1) < 0) {
+		fprintf(stderr, "Error in listen: %s\n", strerror(errno));
+		exit(EXIT_FAILURE);
+	}
 
-        if (client->user_id == user_id) { // If client is found
+	printf("Calling accept\n");
+	connection = accept(sfd, NULL, NULL);
+	if (connection < 0) {
+		fprintf(stderr, "Error in accept: %s\n", strerror(errno));
+		exit(EXIT_FAILURE);
+	}
 
-            if (prev) { // and client is not head of list
+	/* Do the ping-pong thing */
+	read(connection, buf, 5);
+	printf("PID: %d; server received %s\n", getpid(), buf);
+	strcpy(buf, "pong");
+	printf("Server writes %s\n", buf);
+	write(connection, buf, 5);
 
-                prev->next = client->next; // Set previous client's next to current client's next
+	close(connection);			/* Tear down the session with client */
 
-            } else { // If client is head of list
-
-                clients = client->next; // Set head of list to next client
-
-            }
-
-            free(client);
-            break;
-
-        }
-
-        prev = client; // Set previous client to current client
-        client = client->next; // Set current client to next client
-
-    }
-
-    pthread_mutex_unlock(&lock);
-
-}
-
-// Function to send message to all clients except the client who sent the message
-void send_message(char *message, int user_id){
-
-    pthread_mutex_lock(&lock); // Lock mutex
-    struct client_struct *client = clients; // Set client to head of list
-
-    while (client) { // Loop through client list
- 
-        if (client->user_id != user_id) { // If client is not the client who sent the message
-
-            write(client->socket_file_descriptor, message, strlen(message)); // Write message to client
-
-        }
-
-        client = client->next; // Set current client to next clien
-
-    }
-
-    pthread_mutex_unlock(&lock);
-
+	return 0;
 }
