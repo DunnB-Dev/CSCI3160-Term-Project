@@ -96,7 +96,7 @@ void send_message(char *message, int user_id){
 
         }
 
-        client = client->next; // Set current client to next client
+        client = client->next; // Set current client to next clien
 
     }
 
