@@ -14,115 +14,103 @@
 #include <string.h>
 #include <pthread.h>
 #include <sys/types.h>
-#include <time.h>
 
-#define MAX_CLIENTS 10 // the maximum number of clients that can connect at once is 10
-#define MAX_MESSAGE 2000 // character cap for message length is 2000 characters
-#define MAX_NAME_LENGTH 20 // character cap for username is 20
+#define MAX_CLIENTS 5
+#define MAX_MESSAGE 200
+#define MAX_NAME_LENGTH 10
 
-//
-// client_t struct includes the client's socket address, file descriptor,
-// user ID, and name. Name length is defined here.
-//
-typedef struct {
+static int client_count = 0; // Number of clients connected
+static int user_id = 5; 
+
+// Client struct to hold client information and link to next client
+struct client_struct{
 
     struct sockaddr_in address;
-    int socket_fd;
+    int socket_file_descriptor;
     int user_id;
     char name[MAX_NAME_LENGTH];
+    struct client_struct *next;
 
-} client_t;
+};
 
-client_t *clients[MAX_CLIENTS]; // MAX_CLIENT pointers
-pthread_mutex_t clients_mutex = PTHREAD_MUTEX_INITIALIZER; // initialize mutual exclusion lock
-int user_id = 0; // initialize user_id to 0
+// Initialize mutex lock and client list
+pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;  // Initialize mutex lock
+struct client_struct *clients = NULL; // Initialize client list
 
-//
-// lock_clients function attempts to lock the mutex. if the mutex is not locked by
-// another thread, calling thread with acquire lock. if mutex is locke dbya nother thread,
-// calling thread will be blocked.
-//
-void lock_clients() {
+// Function prototypes for functions used in main
+void term_string(char *str) {
 
-    pthread_mutex_lock(&clients_mutex);
-
-}
-
-//
-// unlock_clients function attempts to unlock the mutex.
-//
-void unlock_clients() {
-
-    pthread_mutex_unlock(&clients_mutex);
-
-}
-
-//
-// add_client function takes parameters client_t and the client pointers
-// and checks the total client limit to ensure that no addition clients
-// exceed MAX_CLIENTS.
-//
-void add_client(client_t *client) {
-
-    lock_clients();
-
-    for(int i = 0; i < MAX_CLIENTS; i++) {
-
-        if(!clients[i]) {
-            clients[i] = client;
-            break;
-        }
+    if (str[strlen(str) - 1] == '\n') { // If string ends in newline character
+    
+        str[strlen(str) - 1] = '\0'; // Replace newline character with null character
 
     }
 
-    unlock_clients();
+}
+
+// Function to add client to client list and lock mutex 
+void enqueue_client(struct client_struct *client){
+
+    pthread_mutex_lock(&lock); 
+    client->next = clients; // Set next client to current client
+    clients = client; // Set current client to head of list
+    pthread_mutex_unlock(&lock);
 
 }
 
-//
-// remove_client function take the user ID as a function and frees the client upon disconnect.
-//
-void remove_client(int uid) {
+// Function to remove client from client list and unlock mutex
+void dequeue_client(int user_id){
 
-    lock_clients();
+    pthread_mutex_lock(&lock);
+    struct client_struct *client = clients; // Set client to head of list
+    struct client_struct *prev = NULL; // Set previous client to NULL
 
-    for(int i = 0; i < MAX_CLIENTS; i++) {
+    while (client) { // Loop through client list
 
-        if(clients[i] && clients[i]->user_id == uid) {
+        if (client->user_id == user_id) { // If client is found
 
-            free(clients[i]);
-            clients[i] = NULL;
+            if (prev) { // and client is not head of list
+
+                prev->next = client->next; // Set previous client's next to current client's next
+
+            } else { // If client is head of list
+
+                clients = client->next; // Set head of list to next client
+
+            }
+
+            free(client);
             break;
 
         }
 
+        prev = client; // Set previous client to current client
+        client = client->next; // Set current client to next client
+
     }
 
-    unlock_clients();
+    pthread_mutex_unlock(&lock);
 
 }
 
-//
-// send_message function takes the message and user ID as parameters and sends the message to clients.
-// gets current time and formats it into a timestamp. opens chat log file in append mode.
-//
-void send_message(char *msg, int uid) {
+// Function to send message to all clients except the client who sent the message
+void send_message(char *message, int user_id){
 
-    lock_clients();
-    char buf[MAX_MESSAGE];
-    time_t now = time(NULL);
+    pthread_mutex_lock(&lock); // Lock mutex
+    struct client_struct *client = clients; // Set client to head of list
 
-    for (int i = 0; i < MAX_CLIENTS; i++) {
+    while (client) { // Loop through client list
+ 
+        if (client->user_id != user_id) { // If client is not the client who sent the message
 
-        if (clients[i] && clients[i]->user_id != uid) {
-
-            snprintf(buf, sizeof(buf), "%s - %s\n", clients[uid]->name, msg);
-            send(clients[i]->socket_fd, buf, strlen(buf), 0);
+            write(client->socket_file_descriptor, message, strlen(message)); // Write message to client
 
         }
 
+        client = client->next; // Set current client to next client
+
     }
 
-    unlock_clients();
+    pthread_mutex_unlock(&lock);
 
 }
