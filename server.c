@@ -26,10 +26,10 @@ static int user_id = 5;
 struct client_struct{
 
     struct sockaddr_in address;
-    int socket_file_descriptor;
+    int socket_file_descriptor; // File descriptor for client socket
     int user_id;
     char name[MAX_NAME_LENGTH];
-    struct client_struct *next;
+    struct client_struct *next; // Pointer to next client
 
 };
 
