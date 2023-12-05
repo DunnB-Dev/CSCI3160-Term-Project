@@ -33,9 +33,6 @@ typedef struct {
 
 } client_t;
 
-FILE *file = fopen(CHAT_FILE, "chat_log.txt");
-fclose(file);
-
 client_t *clients[MAX_CLIENTS]; // MAX_CLIENT pointers
 pthread_mutex_t clients_mutex = PTHREAD_MUTEX_INITIALIZER; // initialize mutual exclusion lock
 int user_id = 0; // initialize user_id to 0
