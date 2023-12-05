@@ -37,17 +37,6 @@ struct client_struct{
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;  // Initialize mutex lock
 struct client_struct *clients = NULL; // Initialize client list
 
-// Function prototypes for functions used in main
-void term_string(char *str) {
-
-    if (str[strlen(str) - 1] == '\n') { // If string ends in newline character
-    
-        str[strlen(str) - 1] = '\0'; // Replace newline character with null character
-
-    }
-
-}
-
 // Function to add client to client list and lock mutex 
 void enqueue_client(struct client_struct *client){
 
