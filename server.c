@@ -81,21 +81,13 @@ int main(int argc, char *argv[]) {
 		exit(EXIT_FAILURE);
 	}
 
+    // Convert the socket to continually accept new clients 
 	printf("Calling accept\n");
 	connection = accept(sfd, NULL, NULL);
 	if (connection < 0) {
 		fprintf(stderr, "Error in accept: %s\n", strerror(errno));
 		exit(EXIT_FAILURE);
 	}
-
-	/* Do the ping-pong thing */
-	read(connection, buf, 5);
-	printf("PID: %d; server received %s\n", getpid(), buf);
-	strcpy(buf, "pong");
-	printf("Server writes %s\n", buf);
-	write(connection, buf, 5);
-
-	close(connection);			/* Tear down the session with client */
 
 	return 0;
 }
